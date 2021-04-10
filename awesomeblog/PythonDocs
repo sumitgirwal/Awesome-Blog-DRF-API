@@ -1,0 +1,177 @@
+install python
+install django
+install djangorestframework
+
+
+ django-admin startproject awesomeblog
+ cd awesomeblog
+ python manage.py startapp blog
+
+ add your app name in 
+ INSTALLED_APPS = [
+    ...
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+
+    'blog',
+    'rest_framework',
+]
+
+use routing for blog application
+awesomeblog/urls.py
+
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('blog/', include('blog.urls'))
+]
+
+
+
+
+create a model in blog/models.py
+
+from django.db import models
+
+class Post(models.Model):
+	title = models.CharField(max_length = 200, null = True)
+	description = models.CharField(max_length = 200, null = True)
+	created_date = models.DateField(auto_now = True)
+
+	def __str___(self):
+        return self.title +'--'+ self.description
+
+
+adding post model to blog/admin.py
+from django.contrib import admin
+from .models import Post
+
+@admin.register(Post)
+class PostAdmin(admin.ModelAdmin):
+	list_display = ['id', 'title', 'description', 'created_date']
+
+
+
+now time to migrations.
+python manage.py makemigrations
+python manage.py migrate
+django-admin createsuperuser 
+
+
+creatre blog/serializers.py for serialization.
+
+from rest_framework import serializers
+from .models import Post
+
+class PostSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Post
+        fields = ['id', 'title', 'description', 'created_date']
+
+add blog/views.py the functionality
+
+from django.shortcuts import render
+from rest_framework.generics import ListAPIView
+from rest_framework.generics import CreateAPIView
+from rest_framework.generics import DestroyAPIView
+from rest_framework.generics import UpdateAPIView
+from .serializers import PostSerializer
+from .models import Post
+
+class ListPostAPIView(ListAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+
+class CreatePostAPIView(CreateAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+
+class UpdatePostAPIView(UpdateAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+
+class DeletePostAPIView(DestroyAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostSerializer
+
+
+now adding the routing in blog/urls.py
+
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("posts/",views.ListPostAPIView.as_view(),name="posts_list"),
+    path("create/", views.CreatePostAPIView.as_view(),name="posts_create"),
+    path("update/<int:pk>/",views.UpdatePostAPIView.as_view(),name="posts_update"),
+    path("delete/<int:pk>/",views.DeletePostAPIView.as_view(),name="posts_delete")
+]
+
+
+
+-- Function based view
+
+blog/views.py
+
+
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.parsers import JSONParser
+
+from blog.models import Post
+from blog.serializers import PostSerializer
+
+@csrf_exempt
+def posts(request):
+    if request.method == 'GET':
+        post = Post.objects.all()
+        serializer = PostSerializer(post, many=True)
+        return JsonResponse(serializer.data, safe=False)
+
+    elif request.method == 'POST':
+        data = JSONParser().parse(request)
+        serializer = PostSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return JsonResponse(serializer.data, status=201)
+        return JsonResponse(serializer.errors, status=400)
+
+@csrf_exempt
+def posts_details(request, pk):
+    try:
+        post = Post.objects.get(pk=pk)
+    except Post.DoesNotExist:
+        return HttpResponse(status=404)
+
+    if request.method == 'GET':
+        serializer = PostSerializer(post)
+        return JsonResponse(serializer.data)
+
+    elif request.method == 'PUT':
+        data = JSONParser().parse(request)
+        serializer = PostSerializer(post, data=data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return JsonResponse(serializer.data)
+        return JsonResponse(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+        post.delete()
+        return HttpResponse(status=204)
+
+blog/urls.py
+
+from django.urls import path
+from transformers import views
+
+urlpatterns = [
+    path('posts/', views.posts, name = 'posts'),
+    path('posts/<int:pk>/', views.posts_details, name = 'posts_details'),
+]
+
+
+
+
